@@ -20,7 +20,7 @@ import {
 	STORES,
 } from '@/constants';
 import type { INodeIssues } from 'n8n-workflow';
-import { NodeConnectionType } from 'n8n-workflow';
+import { NodeConnectionTypes } from 'n8n-workflow';
 import { defineStore } from 'pinia';
 import { v4 as uuid } from 'uuid';
 import { useWorkflowsStore } from './workflows.store';
@@ -38,6 +38,7 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 	const localStorageAutoCompleteIsOnboarded = useStorage(LOCAL_STORAGE_AUTOCOMPLETE_IS_ONBOARDED);
 
 	const activeNodeName = ref<string | null>(null);
+	const isRunIndexLinkingEnabled = ref(true);
 	const mainPanelDimensions = ref<MainPanelDimensions>({
 		unknown: { ...DEFAULT_MAIN_PANEL_DIMENSIONS },
 		regular: { ...DEFAULT_MAIN_PANEL_DIMENSIONS },
@@ -48,7 +49,7 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 	const pushRef = ref('');
 	const input = ref<InputPanel>({
 		nodeName: undefined,
-		run: undefined,
+		run: -1,
 		branch: undefined,
 		data: {
 			isEmpty: true,
@@ -59,6 +60,7 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 		'schema',
 	);
 	const output = ref<OutputPanel>({
+		run: -1,
 		branch: undefined,
 		data: {
 			isEmpty: true,
@@ -181,7 +183,7 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 			return false;
 		}
 		const workflow = workflowsStore.getCurrentWorkflow();
-		const parentNodes = workflow.getParentNodes(activeNode.value.name, NodeConnectionType.Main, 1);
+		const parentNodes = workflow.getParentNodes(activeNode.value.name, NodeConnectionTypes.Main, 1);
 		return parentNodes.includes(inputNodeName);
 	});
 
@@ -213,15 +215,36 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 	const isNDVOpen = computed(() => activeNodeName.value !== null);
 
 	const setActiveNodeName = (nodeName: string | null): void => {
+		if (nodeName === activeNodeName.value) {
+			return;
+		}
+
 		activeNodeName.value = nodeName;
+
+		// Reset run index
+		input.value.run = -1;
+		output.value.run = -1;
+		isRunIndexLinkingEnabled.value = true;
 	};
 
 	const setInputNodeName = (nodeName: string | undefined): void => {
 		input.value.nodeName = nodeName;
 	};
 
-	const setInputRunIndex = (run?: number): void => {
+	const setInputRunIndex = (run: number = -1): void => {
 		input.value.run = run;
+
+		if (isRunIndexLinkingEnabled.value) {
+			setOutputRunIndex(run);
+		}
+	};
+
+	const setOutputRunIndex = (run: number = -1): void => {
+		output.value.run = run;
+	};
+
+	const setRunIndexLinkingEnabled = (value: boolean): void => {
+		isRunIndexLinkingEnabled.value = value;
 	};
 
 	const setMainPanelDimensions = (params: {
@@ -269,7 +292,11 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 		type,
 		data,
 		dimensions,
-	}: { type: string; data: string; dimensions: DOMRect | null }): void => {
+	}: {
+		type: string;
+		data: string;
+		dimensions: DOMRect | null;
+	}): void => {
 		draggable.value = {
 			isDragging: true,
 			type,
@@ -314,10 +341,7 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 		}
 	};
 
-	const setNDVPanelDataIsEmpty = (params: {
-		panel: NodePanelType;
-		isEmpty: boolean;
-	}): void => {
+	const setNDVPanelDataIsEmpty = (params: { panel: NodePanelType; isEmpty: boolean }): void => {
 		if (params.panel === 'input') {
 			input.value.data.isEmpty = params.isEmpty;
 		} else {
@@ -403,9 +427,12 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 		expressionOutputItemIndex,
 		isTableHoverOnboarded,
 		mainPanelDimensions,
+		isRunIndexLinkingEnabled,
 		setActiveNodeName,
 		setInputNodeName,
 		setInputRunIndex,
+		setOutputRunIndex,
+		setRunIndexLinkingEnabled,
 		setMainPanelDimensions,
 		setNDVPushRef,
 		resetNDVPushRef,
