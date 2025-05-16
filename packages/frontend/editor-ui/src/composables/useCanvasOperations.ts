@@ -24,6 +24,7 @@ import { type PinDataSource, usePinnedData } from '@/composables/usePinnedData';
 import { useTelemetry } from '@/composables/useTelemetry';
 import { useToast } from '@/composables/useToast';
 import { useWorkflowHelpers } from '@/composables/useWorkflowHelpers';
+import { getExecutionErrorToastConfiguration } from '@/utils/executionUtils';
 import {
 	EnterpriseEditionFeature,
 	FORM_TRIGGER_NODE_TYPE,
@@ -47,7 +48,7 @@ import { useHistoryStore } from '@/stores/history.store';
 import { useNDVStore } from '@/stores/ndv.store';
 import { useNodeCreatorStore } from '@/stores/nodeCreator.store';
 import { useNodeTypesStore } from '@/stores/nodeTypes.store';
-import { useRootStore } from '@/stores/root.store';
+import { useRootStore } from '@n8n/stores/useRootStore';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useTagsStore } from '@/stores/tags.store';
 import { useUIStore } from '@/stores/ui.store';
@@ -2007,6 +2008,14 @@ export function useCanvasOperations({ router }: { router: ReturnType<typeof useR
 
 		if (data === undefined) {
 			throw new Error(`Execution with id "${executionId}" could not be found!`);
+		}
+
+		if (data.status === 'error' && data.data?.resultData.error) {
+			const { title, message } = getExecutionErrorToastConfiguration({
+				error: data.data.resultData.error,
+				lastNodeExecuted: data.data.resultData.lastNodeExecuted,
+			});
+			toast.showMessage({ title, message, type: 'error', duration: 0 });
 		}
 
 		initializeWorkspace(data.workflowData);
