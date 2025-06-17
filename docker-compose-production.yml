@@ -1,8 +1,8 @@
-version: "3.8"
-
 services:
   n8n:
-    image: n8nio/n8n
+    build:
+      context: .
+      dockerfile: docker/images/n8n/Dockerfile
     container_name: n8n
     restart: always
     ports:
