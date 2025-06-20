@@ -1,6 +1,7 @@
+
 services:
   n8n:
-    image: khakanali/n8n:1.0.0
+    image: n8nio/n8n
     container_name: n8n
     restart: always
     ports:
