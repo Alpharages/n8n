@@ -1,10 +1,6 @@
-version: "3.8"
-
 services:
   n8n:
-    build:
-      context: .
-      dockerfile: docker/images/n8n/Dockerfile
+    image: khakanali/n8n:1.0.0
     container_name: n8n
     restart: always
     ports:
