@@ -36,6 +36,8 @@ export const userListItemSchema = z.object({
 	lastActive: z.string().optional(),
 	projectRelations: z.array(userProjectSchema).nullable().optional(),
 	mfaEnabled: z.boolean().optional(),
+	lastActiveAt: z.string().nullable().optional(),
+	inviteAcceptUrl: z.string().optional(),
 });
 
 export const usersListSchema = z.object({
