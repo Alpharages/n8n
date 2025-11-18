@@ -199,6 +199,8 @@ describe('GlobalConfig', () => {
 				includeQueueMetrics: false,
 				queueMetricsInterval: 20,
 				activeWorkflowCountInterval: 60,
+				includeWorkflowStatistics: false,
+				workflowStatisticsInterval: 300,
 			},
 			additionalNonUIRoutes: '',
 			disableProductionWebhooksOnMainProcess: false,
@@ -265,6 +267,7 @@ describe('GlobalConfig', () => {
 			maxOldSpaceSize: '',
 			maxConcurrency: 10,
 			taskTimeout: 300,
+			taskRequestTimeout: 60,
 			heartbeatInterval: 30,
 			insecureMode: false,
 			isNativePythonRunnerEnabled: false,
@@ -316,6 +319,7 @@ describe('GlobalConfig', () => {
 			disableWebhookHtmlSandboxing: false,
 			disableBareRepos: false,
 			awsSystemCredentialsAccess: false,
+			enableGitNodeHooks: false,
 		},
 		executions: {
 			mode: 'regular',
@@ -361,7 +365,6 @@ describe('GlobalConfig', () => {
 			disabled: false,
 		},
 		workflowHistory: {
-			enabled: true,
 			pruneTime: -1,
 		},
 		sso: {
