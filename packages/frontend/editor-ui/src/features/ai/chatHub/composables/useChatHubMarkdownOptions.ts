@@ -13,7 +13,10 @@ let asyncImport:
 	| { status: 'uninitialized' }
 	| { status: 'done' } = { status: 'uninitialized' };
 
-export function useChatHubMarkdownOptions(codeBlockActionsClassName: string) {
+export function useChatHubMarkdownOptions(
+	codeBlockActionsClassName: string,
+	tableContainerClassName: string,
+) {
 	const forceReRenderKey = ref(0);
 	const codeBlockContents = ref<Map<string, string>>();
 
@@ -95,12 +98,33 @@ export function useChatHubMarkdownOptions(codeBlockActionsClassName: string) {
 				}
 
 				return defaultRendered.replace(
-					'</pre>',
-					`<div data-markdown-token-idx="${idx}" class="${codeBlockActionsClassName}"></div></pre>`,
+					'<pre>',
+					`<pre><div data-markdown-token-idx="${idx}" class="${codeBlockActionsClassName}"></div>`,
 				);
 			};
 		};
-		return [linksNewTabPlugin, codeBlockPlugin];
+
+		const tablePlugin = (vueMarkdownItInstance: MarkdownIt) => {
+			const defaultTableOpenRenderer = vueMarkdownItInstance.renderer.rules.table_open;
+			const defaultTableCloseRenderer = vueMarkdownItInstance.renderer.rules.table_close;
+
+			vueMarkdownItInstance.renderer.rules.table_open = (tokens, idx, options, env, self) => {
+				const defaultRendered =
+					defaultTableOpenRenderer?.(tokens, idx, options, env, self) ??
+					self.renderToken(tokens, idx, options);
+
+				return defaultRendered.replace('<table', `<div class="${tableContainerClassName}"><table`);
+			};
+			vueMarkdownItInstance.renderer.rules.table_close = (tokens, idx, options, env, self) => {
+				const defaultRendered =
+					defaultTableCloseRenderer?.(tokens, idx, options, env, self) ??
+					self.renderToken(tokens, idx, options);
+
+				return defaultRendered.replace('</table>', '</table></div>');
+			};
+		};
+
+		return [linksNewTabPlugin, codeBlockPlugin, tablePlugin];
 	});
 
 	return { options, forceReRenderKey, plugins, codeBlockContents };
