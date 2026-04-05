@@ -223,7 +223,6 @@ export class ActiveWorkflowManager {
 				throw error;
 			}
 		}
-		await this.webhookService.populateCache();
 
 		await this.workflowStaticDataService.saveStaticData(workflow);
 
@@ -274,10 +273,20 @@ export class ActiveWorkflowManager {
 			workflowSettings: workflowData.settings,
 		});
 
-		const webhooks = WebhookHelpers.getWorkflowWebhooks(workflow, additionalData, undefined, true);
+		await workflow.expression.acquireIsolate();
+		try {
+			const webhooks = WebhookHelpers.getWorkflowWebhooks(
+				workflow,
+				additionalData,
+				undefined,
+				true,
+			);
 
-		for (const webhookData of webhooks) {
-			await this.webhookService.deleteWebhook(workflow, webhookData, mode, 'update');
+			for (const webhookData of webhooks) {
+				await this.webhookService.deleteWebhook(workflow, webhookData, mode, 'update');
+			}
+		} finally {
+			await workflow.expression.releaseIsolate();
 		}
 
 		await this.workflowStaticDataService.saveStaticData(workflow);
@@ -409,7 +418,32 @@ export class ActiveWorkflowManager {
 
 				this.addQueuedWorkflowActivation(activation, workflowData as WorkflowEntity);
 			};
-			return new TriggerContext(workflow, node, additionalData, mode, activation, emit, emitError);
+
+			const saveFailedExecution = (error: ExecutionError) => {
+				this.logger.info(
+					`The trigger node "${node.name}" of workflow "${workflowData.name}" reported the error: "${error.message}". Saving to failed executions`,
+					{
+						nodeName: node.name,
+						workflowId: workflowData.id,
+						workflowName: workflowData.name,
+					},
+				);
+				void this.executionService
+					.createErrorExecution(error, node, workflowData, workflow, mode)
+					.then(() => {
+						this.executeErrorWorkflow(error, workflowData, mode);
+					});
+			};
+			return new TriggerContext(
+				workflow,
+				node,
+				additionalData,
+				mode,
+				activation,
+				emit,
+				emitError,
+				saveFailedExecution,
+			);
 		};
 	}
 
@@ -586,7 +620,7 @@ export class ActiveWorkflowManager {
 
 			void this.publisher.publishCommand({
 				command: 'add-webhooks-triggers-and-pollers',
-				payload: { workflowId, activeVersionId: dbWorkflow.activeVersionId },
+				payload: { workflowId, activeVersionId: dbWorkflow.activeVersionId, activationMode },
 			});
 
 			return added;
@@ -647,21 +681,29 @@ export class ActiveWorkflowManager {
 				workflowSettings: dbWorkflow.settings,
 			});
 
-			if (shouldAddWebhooks) {
-				added.webhooks = await this.addWebhooks(
-					workflow,
-					additionalData,
-					'trigger',
-					activationMode,
-				);
-			}
+			let triggerCount = 0;
+			await workflow.expression.acquireIsolate();
+			try {
+				if (shouldAddWebhooks) {
+					added.webhooks = await this.addWebhooks(
+						workflow,
+						additionalData,
+						'trigger',
+						activationMode,
+					);
+				}
 
-			if (shouldAddTriggersAndPollers) {
-				added.triggersAndPollers = await this.addTriggersAndPollers(dbWorkflow, workflow, {
-					activationMode,
-					executionMode: 'trigger',
-					additionalData,
-				});
+				if (shouldAddTriggersAndPollers) {
+					added.triggersAndPollers = await this.addTriggersAndPollers(dbWorkflow, workflow, {
+						activationMode,
+						executionMode: 'trigger',
+						additionalData,
+					});
+				}
+
+				triggerCount = this.countTriggers(workflow, additionalData);
+			} finally {
+				await workflow.expression.releaseIsolate();
 			}
 
 			// Workflow got now successfully activated so make sure nothing is left in the queue
@@ -669,7 +711,6 @@ export class ActiveWorkflowManager {
 
 			await this.activationErrorsService.deregister(workflowId);
 
-			const triggerCount = this.countTriggers(workflow, additionalData);
 			await this.workflowRepository.updateWorkflowTriggerCount(workflow.id, triggerCount);
 		} catch (e) {
 			const error = e instanceof Error ? e : new Error(`${e}`);
@@ -719,9 +760,10 @@ export class ActiveWorkflowManager {
 	async handleAddWebhooksTriggersAndPollers({
 		workflowId,
 		activeVersionId,
+		activationMode,
 	}: PubSubCommandMap['add-webhooks-triggers-and-pollers']) {
 		try {
-			await this.add(workflowId, 'activate', undefined, {
+			await this.add(workflowId, activationMode, undefined, {
 				shouldPublish: false, // prevent leader from re-publishing message
 			});
 

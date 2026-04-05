@@ -103,6 +103,11 @@ describe('LdapService', () => {
 
 	beforeEach(() => {
 		jest.restoreAllMocks();
+		jest.resetAllMocks();
+		Client.prototype.bind = jest.fn();
+		Client.prototype.unbind = jest.fn();
+		Client.prototype.startTLS = jest.fn();
+		Client.prototype.search = jest.fn();
 	});
 
 	const mockSettingsRespositoryFindOneByOrFail = (config: LdapConfig) => {
@@ -1479,7 +1484,7 @@ describe('LdapService', () => {
 		});
 	});
 
-	describe('handleLdapLogin()', () => {
+	describe('handleLogin()', () => {
 		describe('enforceEmailUniqueness', () => {
 			const mockUser: User = mock<User>({
 				email: 'jdoe@example.com',
@@ -1523,7 +1528,7 @@ describe('LdapService', () => {
 
 				await ldapService.init();
 
-				const result = await ldapService.handleLdapLogin('jdoe', 'password');
+				const result = await ldapService.handleLogin('jdoe', 'password');
 				expect(result).toEqual(mockUser);
 			});
 
@@ -1535,7 +1540,7 @@ describe('LdapService', () => {
 
 				await ldapService.init();
 
-				const result = await ldapService.handleLdapLogin('jdoe', 'password');
+				const result = await ldapService.handleLogin('jdoe', 'password');
 				expect(result).toBeUndefined();
 			});
 		});

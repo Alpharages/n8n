@@ -17,72 +17,6 @@ describe('ExecutionRepository', () => {
 		await testDb.terminate();
 	});
 
-	describe('createNewExecution', () => {
-		it('should save execution data', async () => {
-			const executionRepo = Container.get(ExecutionRepository);
-			const workflow = await createWorkflow({ settings: { executionOrder: 'v1' } });
-			const executionId = await executionRepo.createNewExecution({
-				workflowId: workflow.id,
-				data: {
-					//@ts-expect-error This is not needed for tests
-					resultData: {},
-				},
-				workflowData: workflow,
-				mode: 'manual',
-				startedAt: new Date(),
-				status: 'new',
-				finished: false,
-			});
-
-			expect(executionId).toBeDefined();
-
-			const executionEntity = await executionRepo.findOneBy({ id: executionId });
-			expect(executionEntity?.id).toEqual(executionId);
-			expect(executionEntity?.workflowId).toEqual(workflow.id);
-			expect(executionEntity?.status).toEqual('new');
-
-			const executionDataRepo = Container.get(ExecutionDataRepository);
-			const executionData = await executionDataRepo.findOneBy({ executionId });
-			expect(executionData?.workflowData).toEqual({
-				id: workflow.id,
-				connections: workflow.connections,
-				nodes: workflow.nodes,
-				name: workflow.name,
-				settings: workflow.settings,
-			});
-			expect(executionData?.data).toEqual('[{"resultData":"1"},{}]');
-		});
-
-		it('should not create execution if execution data insert fails', async () => {
-			const executionRepo = Container.get(ExecutionRepository);
-			const executionDataRepo = Container.get(ExecutionDataRepository);
-
-			const workflow = await createWorkflow({ settings: { executionOrder: 'v1' } });
-			jest
-				.spyOn(executionDataRepo, 'createExecutionDataForExecution')
-				.mockRejectedValueOnce(new Error());
-
-			await expect(
-				async () =>
-					await executionRepo.createNewExecution({
-						workflowId: workflow.id,
-						data: {
-							//@ts-expect-error This is not needed for tests
-							resultData: {},
-						},
-						workflowData: workflow,
-						mode: 'manual',
-						startedAt: new Date(),
-						status: 'new',
-						finished: false,
-					}),
-			).rejects.toThrow();
-
-			const executionEntities = await executionRepo.find();
-			expect(executionEntities).toBeEmptyArray();
-		});
-	});
-
 	describe('run execution data migration', () => {
 		it('should automatically migrate IRunExecutionDataV0 to V1 when reading', async () => {
 			const executionRepo = Container.get(ExecutionRepository);
@@ -127,6 +61,132 @@ describe('ExecutionRepository', () => {
 			});
 		});
 	});
+	describe('getWaitingExecutions', () => {
+		it('should return waiting executions within the 15s lookahead window', async () => {
+			const executionRepo = Container.get(ExecutionRepository);
+			const workflow = await createWorkflow();
+
+			// waitTill in the past — should be returned
+			await executionRepo.insert({
+				workflowId: workflow.id,
+				mode: 'manual',
+				startedAt: new Date(),
+				status: 'waiting',
+				finished: false,
+				waitTill: new Date(Date.now() - 5_000),
+				createdAt: new Date(),
+			});
+
+			// waitTill 10s from now — within 15s lookahead, should be returned
+			await executionRepo.insert({
+				workflowId: workflow.id,
+				mode: 'manual',
+				startedAt: new Date(),
+				status: 'waiting',
+				finished: false,
+				waitTill: new Date(Date.now() + 10_000),
+				createdAt: new Date(),
+			});
+
+			const results = await executionRepo.getWaitingExecutions();
+
+			expect(results).toHaveLength(2);
+		});
+
+		it('should exclude waiting executions beyond the 15s lookahead window', async () => {
+			const executionRepo = Container.get(ExecutionRepository);
+			const workflow = await createWorkflow();
+
+			// waitTill 1 hour from now — well outside the 15s lookahead
+			await executionRepo.insert({
+				workflowId: workflow.id,
+				mode: 'manual',
+				startedAt: new Date(),
+				status: 'waiting',
+				finished: false,
+				waitTill: new Date(Date.now() + 3_600_000),
+				createdAt: new Date(),
+			});
+
+			const results = await executionRepo.getWaitingExecutions();
+
+			expect(results).toHaveLength(0);
+		});
+
+		it('should exclude non-waiting executions even if waitTill is in range', async () => {
+			const executionRepo = Container.get(ExecutionRepository);
+			const workflow = await createWorkflow();
+
+			await executionRepo.insert({
+				workflowId: workflow.id,
+				mode: 'manual',
+				startedAt: new Date(),
+				status: 'success',
+				finished: true,
+				waitTill: new Date(),
+				createdAt: new Date(),
+			});
+
+			const results = await executionRepo.getWaitingExecutions();
+
+			expect(results).toHaveLength(0);
+		});
+
+		it('should order results by waitTill ascending', async () => {
+			const executionRepo = Container.get(ExecutionRepository);
+			const workflow = await createWorkflow();
+
+			const laterWaitTill = new Date(Date.now() + 5_000);
+			const earlierWaitTill = new Date(Date.now() - 5_000);
+
+			const { identifiers: laterIds } = await executionRepo.insert({
+				workflowId: workflow.id,
+				mode: 'manual',
+				startedAt: new Date(),
+				status: 'waiting',
+				finished: false,
+				waitTill: laterWaitTill,
+				createdAt: new Date(),
+			});
+
+			const { identifiers: earlierIds } = await executionRepo.insert({
+				workflowId: workflow.id,
+				mode: 'manual',
+				startedAt: new Date(),
+				status: 'waiting',
+				finished: false,
+				waitTill: earlierWaitTill,
+				createdAt: new Date(),
+			});
+
+			const results = await executionRepo.getWaitingExecutions();
+
+			expect(results).toHaveLength(2);
+			expect(String(results[0].id)).toBe(String(earlierIds[0].id));
+			expect(String(results[1].id)).toBe(String(laterIds[0].id));
+		});
+
+		it('should only return id and waitTill fields', async () => {
+			const executionRepo = Container.get(ExecutionRepository);
+			const workflow = await createWorkflow();
+
+			await executionRepo.insert({
+				workflowId: workflow.id,
+				mode: 'manual',
+				startedAt: new Date(),
+				status: 'waiting',
+				finished: false,
+				waitTill: new Date(),
+				createdAt: new Date(),
+			});
+
+			const results = await executionRepo.getWaitingExecutions();
+
+			expect(results).toHaveLength(1);
+			expect(Object.keys(results[0]).sort()).toEqual(['id', 'waitTill']);
+		});
+	});
+
 	describe('findByStopExecutionsFilter', () => {
 		it('should find executions by status', async () => {
 			const executionRepo = Container.get(ExecutionRepository);

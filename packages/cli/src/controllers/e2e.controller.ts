@@ -119,8 +119,12 @@ export class E2EController {
 		[LICENSE_FEATURES.OIDC]: false,
 		[LICENSE_FEATURES.MFA_ENFORCEMENT]: false,
 		[LICENSE_FEATURES.WORKFLOW_DIFFS]: false,
+		[LICENSE_FEATURES.NAMED_VERSIONS]: false,
 		[LICENSE_FEATURES.CUSTOM_ROLES]: false,
 		[LICENSE_FEATURES.AI_BUILDER]: false,
+		[LICENSE_FEATURES.PERSONAL_SPACE_POLICY]: false,
+		[LICENSE_FEATURES.TOKEN_EXCHANGE]: false,
+		[LICENSE_FEATURES.DATA_REDACTION]: false,
 	};
 
 	private static readonly numericFeaturesDefaults: Record<NumericLicenseFeature, number> = {
@@ -260,6 +264,24 @@ export class E2EController {
 			success: true,
 			message: 'Environment feature flags updated',
 			flags: currentFlags,
+		};
+	}
+
+	/**
+	 * Trigger garbage collection for memory profiling in performance tests.
+	 * Requires Node.js to be started with --expose-gc flag.
+	 */
+	@Post('/gc', { skipAuth: true })
+	triggerGarbageCollection() {
+		if (typeof global.gc === 'function') {
+			// Call GC twice to allow for more reclaimation
+			global.gc();
+			global.gc();
+			return { success: true, message: 'Garbage collection triggered' };
+		}
+		return {
+			success: false,
+			message: 'Garbage collection not available. Ensure Node.js is started with --expose-gc flag.',
 		};
 	}
 
